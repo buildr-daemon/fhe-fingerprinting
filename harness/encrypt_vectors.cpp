@@ -13,6 +13,8 @@
 #include <vector>
 #include <filesystem>
 #include <cstring>
+#include <numeric>
+#include <cmath>
 #include "openfhe.h"
 
 // Serialization includes
@@ -191,6 +193,26 @@ public:
         std::cout << "✓ All storage vectors encrypted and saved" << std::endl;
     }
     
+    // Normalize vector to unit length
+    std::vector<double> normalizeVector(const std::vector<double>& vec) {
+        double norm = 0.0;
+        for (double val : vec) {
+            norm += val * val;
+        }
+        norm = std::sqrt(norm);
+        
+        if (norm == 0.0) {
+            throw std::runtime_error("Cannot normalize zero vector");
+        }
+        
+        std::vector<double> normalized(vec.size());
+        for (size_t i = 0; i < vec.size(); ++i) {
+            normalized[i] = vec[i] / norm;
+        }
+        
+        return normalized;
+    }
+    
     // Encrypt query vector from numpy file
     void encryptQueryVector(const std::string& datasetPath) {
         std::cout << "\n========================================" << std::endl;
@@ -212,8 +234,22 @@ public:
             query[i] = static_cast<double>(data[i]);
         }
         
+        // Normalize query vector to unit length
+        std::cout << "\n[Normalization] Computing unit normalization..." << std::endl;
+        auto normalizedQuery = normalizeVector(query);
+        
+        // Verify normalization
+        double norm = 0.0;
+        for (double val : normalizedQuery) {
+            norm += val * val;
+        }
+        norm = std::sqrt(norm);
+        std::cout << "  Original norm: " << std::sqrt(std::inner_product(query.begin(), query.end(), query.begin(), 0.0)) << std::endl;
+        std::cout << "  Normalized norm: " << norm << std::endl;
+        std::cout << "✓ Query vector normalized to unit length" << std::endl;
+        
         // Encrypt
-        auto ciphertext = encryptVector(query);
+        auto ciphertext = encryptVector(normalizedQuery);
         
         // Save to disk
         std::string filename = encryptedDataPath + "/query.bin";

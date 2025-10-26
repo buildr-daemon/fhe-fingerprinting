@@ -29,20 +29,21 @@ void printUsage() {
     std::cout << "\nCommands:" << std::endl;
     std::cout << "  keygen              - Generate multiparty keys for 2 users" << std::endl;
     std::cout << "  encrypt [dataset]   - Encrypt vectors from dataset (default: 1)" << std::endl;
-    std::cout << "  compute [threshold] - Compute encrypted max similarity (default: 0.85)" << std::endl;
+    std::cout << "  compute [threshold] [max-method] - Compute encrypted max similarity (default: 0.85, softmax)" << std::endl;
     std::cout << "  decrypt             - Threshold decrypt the results" << std::endl;
     std::cout << "  plaintext [dataset] [threshold] - Compute plaintext similarity for comparison" << std::endl;
-    std::cout << "  compare [dataset] [threshold]   - Compare plaintext vs encrypted max similarity" << std::endl;
-    std::cout << "  full [dataset]      - Run complete pipeline (keygen→encrypt→compute→decrypt)" << std::endl;
+    std::cout << "  compare [dataset] [threshold] [max-method] - Compare plaintext vs encrypted max similarity" << std::endl;
+    std::cout << "  full [dataset] [threshold] [max-method] - Run complete pipeline (keygen→encrypt→compute→decrypt)" << std::endl;
     std::cout << "  help                - Show this help message" << std::endl;
     std::cout << "\nExamples:" << std::endl;
     std::cout << "  ./main keygen              # Generate multiparty keys" << std::endl;
     std::cout << "  ./main encrypt 1           # Encrypt dataset_1" << std::endl;
-    std::cout << "  ./main compute 0.85        # Compute with threshold 0.85" << std::endl;
+    std::cout << "  ./main compute 0.85        # Compute with threshold 0.85 (softmax)" << std::endl;
+    std::cout << "  ./main compute 0.85 pairwise # Compute with threshold 0.85 (pairwise)" << std::endl;
     std::cout << "  ./main decrypt             # Decrypt results" << std::endl;
     std::cout << "  ./main plaintext 1 0.85    # Compute plaintext similarity for comparison" << std::endl;
-    std::cout << "  ./main compare 1 0.85      # Compare plaintext vs encrypted max similarity" << std::endl;
-    std::cout << "  ./main full 1              # Run complete pipeline on dataset_1" << std::endl;
+    std::cout << "  ./main compare 1 0.85 pairwise # Compare plaintext vs encrypted (pairwise)" << std::endl;
+    std::cout << "  ./main full 1 0.85 pairwise # Run complete pipeline on dataset_1 (pairwise)" << std::endl;
     std::cout << std::endl;
 }
 
@@ -83,10 +84,18 @@ int main(int argc, char* argv[]) {
     }
     else if (command == "compute") {
         std::string threshold = "0.85";
+        std::string maxMethod = "softmax";
         if (argc >= 3) {
             threshold = argv[2];
         }
-        std::string cmd = "./harness/compute_similarity " + threshold;
+        if (argc >= 4) {
+            maxMethod = argv[3];
+            if (maxMethod != "softmax" && maxMethod != "pairwise") {
+                std::cerr << "Error: Invalid max method. Use 'softmax' or 'pairwise'" << std::endl;
+                return 1;
+            }
+        }
+        std::string cmd = "./harness/compute_similarity " + threshold + " " + maxMethod;
         std::cout << "\n[Executing] " << cmd << "\n" << std::endl;
         return system(cmd.c_str());
     }
@@ -111,11 +120,19 @@ int main(int argc, char* argv[]) {
     else if (command == "compare") {
         std::string datasetId = "1";
         std::string threshold = "0.85";
+        std::string maxMethod = "softmax";
         if (argc >= 3) {
             datasetId = argv[2];
         }
         if (argc >= 4) {
             threshold = argv[3];
+        }
+        if (argc >= 5) {
+            maxMethod = argv[4];
+            if (maxMethod != "softmax" && maxMethod != "pairwise") {
+                std::cerr << "Error: Invalid max method. Use 'softmax' or 'pairwise'" << std::endl;
+                return 1;
+            }
         }
         
         std::cout << "\n╔════════════════════════════════════════╗" << std::endl;
@@ -149,7 +166,7 @@ int main(int argc, char* argv[]) {
         
         // Step 4: Run encrypted computation
         std::cout << "\n[Step 4/6] Computing encrypted similarity..." << std::endl;
-        std::string computeCmd = "./harness/compute_similarity " + threshold;
+        std::string computeCmd = "./harness/compute_similarity " + threshold + " " + maxMethod;
         if (system(computeCmd.c_str()) != 0) {
             std::cerr << "Error in encrypted computation" << std::endl;
             return 1;
@@ -176,8 +193,20 @@ int main(int argc, char* argv[]) {
     }
     else if (command == "full") {
         std::string datasetId = "1";
+        std::string threshold = "0.85";
+        std::string maxMethod = "softmax";
         if (argc >= 3) {
             datasetId = argv[2];
+        }
+        if (argc >= 4) {
+            threshold = argv[3];
+        }
+        if (argc >= 5) {
+            maxMethod = argv[4];
+            if (maxMethod != "softmax" && maxMethod != "pairwise") {
+                std::cerr << "Error: Invalid max method. Use 'softmax' or 'pairwise'" << std::endl;
+                return 1;
+            }
         }
         
         std::cout << "\n╔════════════════════════════════════════╗" << std::endl;
@@ -203,7 +232,7 @@ int main(int argc, char* argv[]) {
         
         // Step 3: Computation
         std::cout << "\n[Step 3/4] Computing encrypted max similarity..." << std::endl;
-        std::string computeCmd = "./harness/compute_similarity 0.85";
+        std::string computeCmd = "./harness/compute_similarity " + threshold + " " + maxMethod;
         if (system(computeCmd.c_str()) != 0) {
             std::cerr << "Error in computation" << std::endl;
             return 1;

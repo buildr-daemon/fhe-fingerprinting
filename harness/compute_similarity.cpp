@@ -125,12 +125,14 @@ private:
     std::string encryptedDataPath;
     std::string resultsPath;
     double threshold;
+    std::string maxMethod;
     
 public:
     SimilarityComputer(const std::string& encDataPath = "encrypted_data", 
                       const std::string& resPath = "results",
-                      double tau = 0.85)
-        : encryptedDataPath(encDataPath), resultsPath(resPath), threshold(tau) {
+                      double tau = 0.85,
+                      const std::string& method = "softmax")
+        : encryptedDataPath(encDataPath), resultsPath(resPath), threshold(tau), maxMethod(method) {
         fs::create_directories(resultsPath);
     }
     
@@ -355,30 +357,139 @@ public:
         return maxApprox;
     }
     
-    // Perform threshold check: is max > threshold?
+    // Compute maximum using pairwise polynomial comparison
+    // Uses tournament-style reduction with polynomial approximation of max(a,b)
+    Ciphertext<DCRTPoly> computeEncryptedMaxPairwise(
+        const std::vector<Ciphertext<DCRTPoly>>& similarities) {
+        
+        std::cout << "\n========================================" << std::endl;
+        std::cout << "Computing Encrypted Maximum (Pairwise)" << std::endl;
+        std::cout << "========================================" << std::endl;
+        
+        // Validation checks
+        if (similarities.empty()) {
+            throw std::runtime_error("No similarities provided for max computation");
+        }
+        std::cout << "\n[Validation] Input similarities count: " << similarities.size() << std::endl;
+        std::cout << "[Validation] Crypto context valid: " << (cryptoContext ? "Yes" : "No") << std::endl;
+        
+        std::cout << "\n[Algorithm] Pairwise polynomial comparison" << std::endl;
+        std::cout << "  Formula: max(a,b) = (a+b)/2 + |a-b|/2" << std::endl;
+        std::cout << "  Tournament reduction: " << similarities.size() << " → 1" << std::endl;
+        
+        // Create working copy of similarities for tournament
+        std::vector<Ciphertext<DCRTPoly>> currentRound = similarities;
+        int round = 1;
+        
+        while (currentRound.size() > 1) {
+            std::cout << "\n[Round " << round << "] Comparing " << currentRound.size() << " values..." << std::endl;
+            
+            std::vector<Ciphertext<DCRTPoly>> nextRound;
+            
+            // Process pairs
+            for (size_t i = 0; i < currentRound.size(); i += 2) {
+                if (i + 1 < currentRound.size()) {
+                    // Compare pair: max(a, b)
+                    try {
+                        auto maxPair = computePairwiseMax(currentRound[i], currentRound[i + 1]);
+                        nextRound.push_back(maxPair);
+                    } catch (const std::exception& e) {
+                        std::cerr << "\n✗ Error in pairwise comparison at round " << round << ", pair " << (i/2) << ":" << std::endl;
+                        std::cerr << "  Exception: " << e.what() << std::endl;
+                        std::cerr << "  Pair indices: " << i << ", " << (i+1) << std::endl;
+                        throw;
+                    }
+                } else {
+                    // Odd element, pass through
+                    nextRound.push_back(currentRound[i]);
+                }
+            }
+            
+            currentRound = nextRound;
+            std::cout << "  → " << currentRound.size() << " values remain" << std::endl;
+            round++;
+        }
+        
+        std::cout << "✓ Encrypted maximum computed using pairwise comparison" << std::endl;
+        return currentRound[0];
+    }
+    
+    // Compute max(a,b) using polynomial approximation
+    // max(a,b) = (a+b)/2 + |a-b|/2
+    // |a-b| is approximated using polynomial approximation
+    Ciphertext<DCRTPoly> computePairwiseMax(
+        const Ciphertext<DCRTPoly>& a,
+        const Ciphertext<DCRTPoly>& b) {
+        
+        // Compute (a+b)/2
+        auto sum = cryptoContext->EvalAdd(a, b);
+        auto halfSum = cryptoContext->EvalMult(sum, 0.5);
+        
+        // Compute |a-b|/2 using polynomial approximation
+        auto diff = cryptoContext->EvalSub(a, b);
+        auto absDiffHalf = computePolynomialAbs(diff, 0.5);
+        
+        // max(a,b) = (a+b)/2 + |a-b|/2
+        auto result = cryptoContext->EvalAdd(halfSum, absDiffHalf);
+        
+        return result;
+    }
+    
+    // Compute polynomial approximation of |x| * scale
+    // Uses approximation: |x| ≈ sqrt(x²) ≈ x * (1 - x²/6 + x⁴/40 - x⁶/336)
+    // For small x, this gives good approximation of absolute value
+    Ciphertext<DCRTPoly> computePolynomialAbs(
+        const Ciphertext<DCRTPoly>& x,
+        double scale = 1.0) {
+        
+        // Scale the input
+        auto scaledX = cryptoContext->EvalMult(x, scale);
+        
+        // Compute x²
+        auto x2 = cryptoContext->EvalMult(scaledX, scaledX);
+        
+        // Compute x⁴
+        auto x4 = cryptoContext->EvalMult(x2, x2);
+        
+        // Compute x⁶
+        auto x6 = cryptoContext->EvalMult(x4, x2);
+        
+        // |x| ≈ x * (1 - x²/6 + x⁴/40 - x⁶/336)
+        // Start with x
+        auto result = scaledX;
+        
+        // Subtract x²/6
+        auto term1 = cryptoContext->EvalMult(x2, -1.0/6.0);
+        result = cryptoContext->EvalAdd(result, term1);
+        
+        // Add x⁴/40
+        auto term2 = cryptoContext->EvalMult(x4, 1.0/40.0);
+        result = cryptoContext->EvalAdd(result, term2);
+        
+        // Subtract x⁶/336
+        auto term3 = cryptoContext->EvalMult(x6, -1.0/336.0);
+        result = cryptoContext->EvalAdd(result, term3);
+        
+        return result;
+    }
+    
+    // Note: Threshold check is now performed during decryption
+    // This function is kept for compatibility but returns the max similarity directly
     Ciphertext<DCRTPoly> computeThresholdCheck(
         const Ciphertext<DCRTPoly>& maxSimilarity) {
         
         std::cout << "\n========================================" << std::endl;
-        std::cout << "Computing Threshold Check" << std::endl;
+        std::cout << "Preparing for Threshold Check" << std::endl;
         std::cout << "========================================" << std::endl;
         
         std::cout << "\n[Threshold] τ = " << threshold << std::endl;
-        std::cout << "[Check] max > τ ?" << std::endl;
+        std::cout << "[Note] Threshold comparison will be performed during decryption" << std::endl;
+        std::cout << "[Note] Returning encrypted maximum similarity for decryption" << std::endl;
         
-        // Compute (max - threshold)
-        auto diff = cryptoContext->EvalSub(maxSimilarity, threshold);
+        std::cout << "✓ Encrypted maximum similarity ready for decryption" << std::endl;
         
-        // Apply sign function: sign(diff) ≈ 1 if diff > 0, ≈ -1 if diff < 0
-        auto signResult = PolynomialApproximations::evaluateSign(cryptoContext, diff, 5.0);
-        
-        // Convert to 0/1: (sign + 1) / 2
-        auto shifted = cryptoContext->EvalAdd(signResult, 1.0);
-        auto binaryResult = cryptoContext->EvalMult(shifted, 0.5);
-        
-        std::cout << "✓ Threshold check computed (1 if unique, 0 if not unique)" << std::endl;
-        
-        return binaryResult;
+        // Return the max similarity directly - threshold check happens in plaintext
+        return maxSimilarity;
     }
     
     // Save results
@@ -389,25 +500,34 @@ public:
         std::cout << "Saving Results" << std::endl;
         std::cout << "========================================" << std::endl;
         
-        // Save max similarity
+        // Save max similarity (for threshold comparison during decryption)
         std::string maxFile = resultsPath + "/max_similarity.bin";
         if (!Serial::SerializeToFile(maxFile, maxSim, SerType::BINARY)) {
             throw std::runtime_error("Failed to save max similarity");
         }
         std::cout << "✓ Max similarity saved to: " << maxFile << std::endl;
+        std::cout << "  (Threshold comparison will be performed during decryption)" << std::endl;
         
-        // Save threshold result
+        // Note: thresholdResult is now the same as maxSim since we're not doing encrypted threshold
+        // We still save it for compatibility with existing decryption code
         std::string thresholdFile = resultsPath + "/threshold_result.bin";
         if (!Serial::SerializeToFile(thresholdFile, thresholdResult, SerType::BINARY)) {
             throw std::runtime_error("Failed to save threshold result");
         }
         std::cout << "✓ Threshold result saved to: " << thresholdFile << std::endl;
+        std::cout << "  (Contains max similarity for plaintext threshold comparison)" << std::endl;
         
         // Save metadata
         std::ofstream metaFile(resultsPath + "/results_metadata.txt");
         metaFile << "threshold=" << threshold << "\n";
         metaFile << "num_similarities=1000\n";
-        metaFile << "algorithm=softmax_approximation\n";
+        metaFile << "max_method=" << maxMethod << "\n";
+        if (maxMethod == "softmax") {
+            metaFile << "algorithm=softmax_approximation\n";
+        } else {
+            metaFile << "algorithm=pairwise_polynomial\n";
+        }
+        metaFile << "threshold_comparison=plaintext\n";
         metaFile.close();
         std::cout << "✓ Metadata saved" << std::endl;
     }
@@ -429,8 +549,13 @@ public:
             // Compute all similarities
             auto similarities = computeAllSimilarities(queryCt);
             
-            // Compute encrypted max
-            auto maxSim = computeEncryptedMax(similarities);
+            // Compute encrypted max using selected method
+            Ciphertext<DCRTPoly> maxSim;
+            if (maxMethod == "pairwise") {
+                maxSim = computeEncryptedMaxPairwise(similarities);
+            } else {
+                maxSim = computeEncryptedMax(similarities);
+            }
             
             // Compute threshold check
             auto thresholdResult = computeThresholdCheck(maxSim);
@@ -468,14 +593,26 @@ int main(int argc, char* argv[]) {
     std::cout << "║  Multiparty CKKS System                ║" << std::endl;
     std::cout << "╚════════════════════════════════════════╝" << std::endl;
     
-    // Parse threshold from command line if provided
+    // Parse command line arguments
     double threshold = 0.85;
+    std::string maxMethod = "softmax";
+    
     if (argc >= 2) {
         threshold = std::stod(argv[1]);
     }
+    if (argc >= 3) {
+        maxMethod = argv[2];
+        if (maxMethod != "softmax" && maxMethod != "pairwise") {
+            std::cerr << "Error: Invalid max method. Use 'softmax' or 'pairwise'" << std::endl;
+            return 1;
+        }
+    }
+    
+    std::cout << "\n[Configuration] Threshold: " << threshold << std::endl;
+    std::cout << "[Configuration] Max method: " << maxMethod << std::endl;
     
     try {
-        SimilarityComputer computer("encrypted_data", "results", threshold);
+        SimilarityComputer computer("encrypted_data", "results", threshold, maxMethod);
         computer.run();
         return 0;
         

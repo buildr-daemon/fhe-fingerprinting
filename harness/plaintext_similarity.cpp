@@ -118,6 +118,26 @@ public:
         fs::create_directories(resultsPath);
     }
     
+    // Normalize vector to unit length
+    std::vector<double> normalizeVector(const std::vector<double>& vec) {
+        double norm = 0.0;
+        for (double val : vec) {
+            norm += val * val;
+        }
+        norm = std::sqrt(norm);
+        
+        if (norm == 0.0) {
+            throw std::runtime_error("Cannot normalize zero vector");
+        }
+        
+        std::vector<double> normalized(vec.size());
+        for (size_t i = 0; i < vec.size(); ++i) {
+            normalized[i] = vec[i] / norm;
+        }
+        
+        return normalized;
+    }
+    
     // Load vectors from NPY files
     std::pair<std::vector<double>, std::vector<std::vector<double>>> loadVectors(const std::string& datasetId) {
         std::cout << "\n========================================" << std::endl;
@@ -139,7 +159,21 @@ public:
             queryVector[i] = static_cast<double>(queryData[i]);
         }
         
-        std::cout << "✓ Query vector loaded: " << queryVector.size() << " dimensions" << std::endl;
+        // Normalize query vector to unit length
+        std::cout << "\n[Normalization] Computing unit normalization for query vector..." << std::endl;
+        auto normalizedQuery = normalizeVector(queryVector);
+        
+        // Verify normalization
+        double norm = 0.0;
+        for (double val : normalizedQuery) {
+            norm += val * val;
+        }
+        norm = std::sqrt(norm);
+        std::cout << "  Original norm: " << std::sqrt(std::inner_product(queryVector.begin(), queryVector.end(), queryVector.begin(), 0.0)) << std::endl;
+        std::cout << "  Normalized norm: " << norm << std::endl;
+        std::cout << "✓ Query vector normalized to unit length" << std::endl;
+        
+        std::cout << "✓ Query vector loaded: " << normalizedQuery.size() << " dimensions" << std::endl;
         
         // Load storage vectors
         std::string storageFile = datasetPath + "/storage_vectors.npy";
@@ -166,7 +200,7 @@ public:
         
         std::cout << "✓ Storage vectors loaded: " << storageVectors.size() << " vectors" << std::endl;
         
-        return {queryVector, storageVectors};
+        return {normalizedQuery, storageVectors};
     }
     
     // Compute cosine similarity between two vectors

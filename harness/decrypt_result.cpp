@@ -11,6 +11,7 @@
 #include <iostream>
 #include <fstream>
 #include <filesystem>
+#include <iomanip>
 #include "openfhe.h"
 
 // Serialization includes
@@ -102,12 +103,15 @@ public:
         
         // Load metadata
         double threshold = 0.85;
+        bool thresholdInPlaintext = false;
         std::ifstream metaFile(resultsPath + "/results_metadata.txt");
         if (metaFile.is_open()) {
             std::string line;
             while (std::getline(metaFile, line)) {
                 if (line.find("threshold=") == 0) {
                     threshold = std::stod(line.substr(10));
+                } else if (line.find("threshold_comparison=plaintext") == 0) {
+                    thresholdInPlaintext = true;
                 }
             }
             metaFile.close();
@@ -121,29 +125,23 @@ public:
         }
         std::cout << "\n✓ Encrypted max similarity loaded" << std::endl;
         
-        // Load threshold result ciphertext
-        Ciphertext<DCRTPoly> thresholdCt;
-        std::string thresholdFile = resultsPath + "/threshold_result.bin";
-        if (!Serial::DeserializeFromFile(thresholdFile, thresholdCt, SerType::BINARY)) {
-            throw std::runtime_error("Failed to load threshold result ciphertext");
-        }
-        std::cout << "✓ Encrypted threshold result loaded" << std::endl;
-        
         // Decrypt max similarity using threshold protocol
         auto maxSimPlaintext = thresholdDecrypt(maxSimCt, "Max Similarity");
         
-        // Decrypt threshold result using threshold protocol
-        auto thresholdPlaintext = thresholdDecrypt(thresholdCt, "Threshold Check");
-        
-        // Extract values
+        // Extract max similarity value
         std::vector<double> maxValues = maxSimPlaintext->GetRealPackedValue();
-        std::vector<double> thresholdValues = thresholdPlaintext->GetRealPackedValue();
-        
         double maxSimilarity = maxValues[0];
-        double thresholdResult = thresholdValues[0];
         
-        // Interpret threshold result (should be close to 0 or 1)
-        bool isUnique = (thresholdResult > 0.5);
+        // Perform threshold comparison in plaintext
+        std::cout << "\n[Threshold Check] Performing comparison in plaintext..." << std::endl;
+        std::cout << "  Max similarity: " << std::fixed << std::setprecision(6) << maxSimilarity << std::endl;
+        std::cout << "  Threshold τ: " << std::fixed << std::setprecision(2) << threshold << std::endl;
+        
+        bool isUnique = (maxSimilarity > threshold);
+        double thresholdResult = isUnique ? 1.0 : 0.0;  // For compatibility with display
+        
+        std::cout << "  Result: " << (isUnique ? "UNIQUE (max > τ)" : "NOT UNIQUE (max ≤ τ)") << std::endl;
+        std::cout << "✓ Threshold comparison completed in plaintext" << std::endl;
         
         // Print results
         printResults(maxSimilarity, threshold, isUnique, thresholdResult);
