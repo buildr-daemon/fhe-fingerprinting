@@ -283,3 +283,125 @@ Computing Encrypted Maximum
   Processed 600/1000 exponentials
 Error in computation
 ```
+
+with k order-statistics using openfhe-statistics
+
+```
+❯ bash build_test.sh
+=========================================
+Building ranking_test program...
+=========================================
+Using cmake: cmake
+Running CMake...
+-- OpenMP found at /opt/homebrew/opt/libomp/include
+-- Configuring done (0.4s)
+-- Generating done (0.0s)
+-- Build files have been written to: /Users/theholygrail/job-search/merkel-assignment/ranking_test/build
+Building project...
+[ 14%] Building CXX object CMakeFiles/ranking_test.dir/ranking_test.cpp.o
+clang++: warning: -lomp: 'linker' input unused [-Wunused-command-line-argument]
+[ 28%] Linking CXX executable /Users/theholygrail/job-search/merkel-assignment/ranking_test/ranking_test
+ld: warning: ignoring duplicate libraries: '-lomp'
+[100%] Built target ranking_test
+
+=========================================
+Build successful! Running program...
+=========================================
+
+╔═══════════════════════════════════════════════════════════╗
+║   512D Vector Cosine Similarity with Encrypted Ranking   ║
+║   Using rankWithCorrection with OpenFHE CKKS              ║
+╚═══════════════════════════════════════════════════════════╝
+
+========================================
+Step 1: Generate and Normalize Vectors
+========================================
+✓ Generated 100 storage vectors (512D each)
+✓ Generated 1 query vector (512D)
+
+========================================
+Step 2: Plaintext Cosine Similarity
+========================================
+
+Plaintext Maximum:
+  Vector index: 81
+  Similarity: 1.000000
+
+Top 5 Similarities:
+  1. Vector 81: 1.000000
+  2. Vector 29: 0.105504
+  3. Vector 48: 0.092617
+  4. Vector 71: 0.080768
+  5. Vector 13: 0.077764
+
+========================================
+Step 3: CKKS Encryption Setup
+========================================
+
+CryptoContext Parameters:
+  Similarity vector length: 100
+  Comparison depth: 5
+  Multiplicative depth: 20
+  Num slots: 16384
+
+Generating rotation indices...
+  Generated 235 rotation indices
+CKKS PARAMETERS
+Integral Bit Precision        : 1
+Decimal Bit Precision         : 50
+Ciphertext Modulus Precision  : 1052
+Ring Dimension                : 65536
+Max Slots                     : 32768
+Slots                         : 16384
+Multiplicative Depth          : 20
+Security Level                : HEStd_128_classic
+Secret Key Distribution       : UNIFORM_TERNARY
+Scaling Technique             : FLEXIBLEAUTO
+Encryption Technique          : STANDARD
+Multiplication Technique      : HPS
+Moduli Chain Bitsize          : [ 51 51 51 51 51 51 51 51 51 50 51 51 51 51 51 51 51 50 51 50 51 ]
+
+Key generation protocol...          COMPLETED (19.811666s)
+
+
+========================================
+Step 4: Encrypt Vectors
+========================================
+✓ Encrypted 100 storage vectors
+✓ Encrypted query vector
+
+========================================
+Step 5: Compute Encrypted Dot Products
+========================================
+Computing encrypted dot products for 100 vectors...
+  Processed 1/100 vectors
+  Processed 10/100 vectors
+  Processed 20/100 vectors
+  Processed 30/100 vectors
+  Processed 40/100 vectors
+  Processed 50/100 vectors
+  Processed 60/100 vectors
+  Processed 70/100 vectors
+  Processed 80/100 vectors
+  Processed 90/100 vectors
+  Processed 100/100 vectors
+✓ Computed encrypted similarities
+Packing similarities into single ciphertext...
+✓ Packed similarities into single ciphertext
+
+========================================
+Step 6: Encrypted Ranking and Maximum Extraction
+========================================
+
+[Algorithm] rankWithCorrection + indicator for maximum
+  ✓ Ranked similarities
+  ✓ Created maximum indicator mask
+✓ Encrypted maximum extraction completed
+  Runtime: 12.138646 seconds
+
+========================================
+Step 7: Decrypt and Compare
+========================================
+libc++abi: terminating due to uncaught exception of type lbcrypto::OpenFHEException: /Users/theholygrail/job-search/merkel-assignment/dependencies/openfhe-development/src/pke/lib/encoding/ckkspackedencoding.cpp:l.455:Decode(): The decryption failed because the approximation error is too high. Check the parameters. 
+build_test.sh: line 65: 12915 Abort trap: 6           ./ranking_test
+```
