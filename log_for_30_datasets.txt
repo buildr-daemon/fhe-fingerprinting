@@ -1,0 +1,85 @@
+Generated dataset at datasets/dataset_6
+  - Storage vectors shape: (30, 512), dtype: float32
+  - Query vector shape: (512,), dtype: float32
+  - Storage vectors normalized: True
+
+Generated dataset at datasets/dataset_7
+  - Storage vectors shape: (30, 512), dtype: float32
+  - Query vector shape: (512,), dtype: float32
+  - Storage vectors normalized: True
+
+Generated dataset at datasets/dataset_8
+  - Storage vectors shape: (30, 512), dtype: float32
+  - Query vector shape: (512,), dtype: float32
+  - Storage vectors normalized: True
+
+Generated dataset at datasets/dataset_9
+  - Storage vectors shape: (30, 512), dtype: float32
+  - Query vector shape: (512,), dtype: float32
+  - Storage vectors normalized: True
+
+Generated dataset at datasets/dataset_10
+  - Storage vectors shape: (30, 512), dtype: float32
+  - Query vector shape: (512,), dtype: float32
+  - Storage vectors normalized: True
+
+============================================================
+Successfully generated 10 datasets in 'datasets' folder
+❯ ./new-main
+╔════════════════════════════════════════╗
+║  Interactive Max CKKS                 ║
+║  (No Permutation / Loose Version)     ║
+╚════════════════════════════════════════╝
+
+========================================
+Generating CKKS Keys
+========================================
+✓ CryptoContext initialized
+  Ring Dimension: 65536
+  Batch Size: 1024
+✓ Key pair generated
+✓ Rotation keys generated
+
+========================================
+Loading and Encrypting Vectors
+========================================
+✓ Query vector loaded: 512 dimensions
+✓ Storage vectors loaded: 30 vectors, 512 dimensions
+✓ Query vector normalized to unit length (norm: 1)
+✓ Query vector encrypted
+
+[Encryption] Encrypting 30 storage vectors...
+  Encrypted 1/30 vectors
+  Encrypted 30/30 vectors
+✓ All vectors encrypted
+
+========================================
+Computing Cosine Similarities
+========================================
+  Computed 1/30 similarities
+  Computed 30/30 similarities
+✓ All similarities computed
+Running interactive argmax for 30 values (Loose HT Protocol)...
+✓ Completed all HESign interactions
+✓ Computed encrypted scores
+
+========================================
+Decrypting Results
+========================================
+✓ Decrypted maximum similarity: 0.119905
+✓ Decrypted maximum index: 9
+
+========================================
+Verification (Plaintext)
+========================================
+✓ Plaintext maximum similarity: 0.119905
+✓ Plaintext maximum index: 9
+
+========================================
+Result Comparison
+========================================
+Index match: ✓ YES
+Value match: ✓ YES (diff: 1.40692e-12)
+
+✓✓✓ ALL TESTS PASSED ✓✓✓
+========================================

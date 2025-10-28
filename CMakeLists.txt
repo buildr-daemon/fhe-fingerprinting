@@ -73,3 +73,17 @@ set_target_properties(plaintext_similarity PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/harness
 )
 
+# Find max executable
+add_executable(find_max find_max/find_max.cpp)
+target_link_libraries(find_max ${OpenFHE_LIBRARIES})
+set_target_properties(find_max PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/find_max
+)
+
+
+# New main executable for interactive max
+add_executable(new-main new-main.cpp)
+target_link_libraries(new-main ${OpenFHE_LIBRARIES})
+set_target_properties(new-main PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)

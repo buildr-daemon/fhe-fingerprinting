@@ -15,6 +15,8 @@
 #include <filesystem>
 #include <cmath>
 #include <algorithm>
+#include <numeric>
+#include <iomanip>
 #include "openfhe.h"
 
 // Serialization includes
@@ -178,6 +180,145 @@ public:
         } else {
             std::cout << "⚠ Evaluation sum keys file not found" << std::endl;
         }
+    }
+    
+    // Decrypt and check similarity results using threshold decryption
+    void decryptAndCheckSimilarities(const std::vector<Ciphertext<DCRTPoly>>& similarities) {
+        std::cout << "\n========================================" << std::endl;
+        std::cout << "Decrypting Cosine Similarities (Threshold)" << std::endl;
+        std::cout << "========================================" << std::endl;
+        
+        // Load both secret keys for threshold decryption
+        PrivateKey<DCRTPoly> user1SecretKey;
+        PrivateKey<DCRTPoly> user2SecretKey;
+        
+        std::string sk1Path = "users/user1/secret_key.txt";
+        if (!Serial::DeserializeFromFile(sk1Path, user1SecretKey, SerType::BINARY)) {
+            std::cout << "⚠ Failed to load User 1's secret key, skipping decryption check" << std::endl;
+            return;
+        }
+        std::cout << "✓ User 1 secret key loaded" << std::endl;
+        
+        std::string sk2Path = "users/user2/secret_key.txt";
+        if (!Serial::DeserializeFromFile(sk2Path, user2SecretKey, SerType::BINARY)) {
+            std::cout << "⚠ Failed to load User 2's secret key, skipping decryption check" << std::endl;
+            return;
+        }
+        std::cout << "✓ User 2 secret key loaded" << std::endl;
+        std::cout << "\n[Security] Threshold decryption requires both parties" << std::endl;
+        
+        // Decrypt similarities using threshold protocol
+        std::cout << "\n[Decrypting] " << similarities.size() << " similarities using threshold protocol..." << std::endl;
+        std::vector<double> decryptedSimilarities;
+        
+        for (size_t i = 0; i < similarities.size(); ++i) {
+            try {
+                // Threshold decryption protocol:
+                // 1. User 1 performs partial decryption (Main party)
+                std::vector<Ciphertext<DCRTPoly>> ciphertextVec = {similarities[i]};
+                auto partialPt1 = cryptoContext->MultipartyDecryptMain(ciphertextVec, user1SecretKey);
+                
+                // 2. User 2 performs partial decryption (Lead party)
+                auto partialPt2 = cryptoContext->MultipartyDecryptLead(ciphertextVec, user2SecretKey);
+                
+                // 3. Fuse partial plaintexts to get final result
+                Plaintext finalPt;
+                std::vector<Ciphertext<DCRTPoly>> partialCiphertextVec = {partialPt1[0], partialPt2[0]};
+                cryptoContext->MultipartyDecryptFusion(partialCiphertextVec, &finalPt);
+                
+                std::vector<double> values = finalPt->GetRealPackedValue();
+                decryptedSimilarities.push_back(values[0]);
+                
+                if ((i + 1) % 100 == 0 || i == 0 || i == similarities.size() - 1) {
+                    std::cout << "  Decrypted " << (i + 1) << "/" << similarities.size() 
+                              << " (avg so far: " << std::setprecision(4) 
+                              << std::accumulate(decryptedSimilarities.begin(), 
+                                                decryptedSimilarities.end(), 0.0) / decryptedSimilarities.size()
+                              << ")" << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cout << "⚠ Failed to decrypt similarity " << i << ": " << e.what() << std::endl;
+                decryptedSimilarities.push_back(0.0);
+            }
+        }
+        
+        std::cout << "\n✓ All similarities decrypted" << std::endl;
+        
+        // Display statistics
+        std::cout << "\n[Statistics] Cosine Similarity Results:" << std::endl;
+        auto minmax = std::minmax_element(decryptedSimilarities.begin(), decryptedSimilarities.end());
+        double sum = std::accumulate(decryptedSimilarities.begin(), decryptedSimilarities.end(), 0.0);
+        double mean = sum / decryptedSimilarities.size();
+        
+        // Calculate standard deviation
+        double variance = 0.0;
+        for (double val : decryptedSimilarities) {
+            variance += (val - mean) * (val - mean);
+        }
+        double stddev = std::sqrt(variance / decryptedSimilarities.size());
+        
+        std::cout << "  Count: " << decryptedSimilarities.size() << std::endl;
+        std::cout << "  Mean: " << std::fixed << std::setprecision(6) << mean << std::endl;
+        std::cout << "  Std Dev: " << std::fixed << std::setprecision(6) << stddev << std::endl;
+        std::cout << "  Min: " << std::fixed << std::setprecision(6) << *minmax.first << std::endl;
+        std::cout << "  Max: " << std::fixed << std::setprecision(6) << *minmax.second << std::endl;
+        
+        // Find index of maximum
+        size_t maxIndex = std::distance(decryptedSimilarities.begin(), minmax.second);
+        std::cout << "  Max index: " << maxIndex << std::endl;
+        
+        // Compare with plaintext results if available
+        std::string plaintextFile = "plaintext_results/all_similarities.txt";
+        if (fs::exists(plaintextFile)) {
+            std::cout << "\n[Comparison] Loading plaintext results..." << std::endl;
+            std::vector<double> plaintextSimilarities;
+            std::ifstream file(plaintextFile);
+            double value;
+            while (file >> value) {
+                plaintextSimilarities.push_back(value);
+            }
+            file.close();
+            
+            if (plaintextSimilarities.size() == decryptedSimilarities.size()) {
+                // Calculate differences
+                double maxDiff = 0.0;
+                double meanDiff = 0.0;
+                for (size_t i = 0; i < decryptedSimilarities.size(); ++i) {
+                    double diff = std::abs(decryptedSimilarities[i] - plaintextSimilarities[i]);
+                    meanDiff += diff;
+                    maxDiff = std::max(maxDiff, diff);
+                }
+                meanDiff /= decryptedSimilarities.size();
+                
+                std::cout << "\n[Verification] Plaintext vs Encrypted:" << std::endl;
+                std::cout << "  Mean absolute difference: " << std::fixed << std::setprecision(8) 
+                          << meanDiff << std::endl;
+                std::cout << "  Max absolute difference: " << std::fixed << std::setprecision(8) 
+                          << maxDiff << std::endl;
+                
+                // Compare max values
+                auto plaintextMaxIt = std::max_element(plaintextSimilarities.begin(), 
+                                                       plaintextSimilarities.end());
+                size_t plaintextMaxIndex = std::distance(plaintextSimilarities.begin(), plaintextMaxIt);
+                
+                std::cout << "\n  Encrypted max: " << std::fixed << std::setprecision(6) 
+                          << decryptedSimilarities[maxIndex] << " (index " << maxIndex << ")" << std::endl;
+                std::cout << "  Plaintext max: " << std::fixed << std::setprecision(6) 
+                          << plaintextSimilarities[plaintextMaxIndex] << " (index " 
+                          << plaintextMaxIndex << ")" << std::endl;
+                
+                if (maxIndex == plaintextMaxIndex) {
+                    std::cout << "  ✓ Max indices match!" << std::endl;
+                } else {
+                    std::cout << "  ⚠ Max indices differ" << std::endl;
+                }
+            } else {
+                std::cout << "  ⚠ Size mismatch: encrypted=" << decryptedSimilarities.size() 
+                          << ", plaintext=" << plaintextSimilarities.size() << std::endl;
+            }
+        }
+        
+        std::cout << "\n✓ Decryption check completed" << std::endl;
     }
     
     // Compute dot product of two encrypted vectors
@@ -548,6 +689,9 @@ public:
             
             // Compute all similarities
             auto similarities = computeAllSimilarities(queryCt);
+            
+            // Decrypt and check similarity results (optional verification step)
+            decryptAndCheckSimilarities(similarities);
             
             // Compute encrypted max using selected method
             Ciphertext<DCRTPoly> maxSim;

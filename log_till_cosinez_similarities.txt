@@ -1,0 +1,221 @@
+❯ cd ..
+❯ ./new-main
+╔════════════════════════════════════════╗
+║  Interactive Max CKKS                 ║
+║  Complete Implementation              ║
+╚════════════════════════════════════════╝
+
+========================================
+Generating CKKS Keys
+========================================
+✓ CryptoContext initialized
+  Ring Dimension: 65536
+  Batch Size: 1024
+✓ Key pair generated
+✓ Evaluation keys generated
+
+========================================
+Loading and Encrypting Vectors
+========================================
+✓ Query vector loaded: 512 dimensions
+✓ Storage vectors loaded: 1000 vectors, 512 dimensions
+✓ Query vector normalized to unit length (norm: 1)
+✓ Query vector encrypted
+
+[Encryption] Encrypting 1000 storage vectors...
+  Encrypted 1/1000 vectors
+  Encrypted 100/1000 vectors
+  Encrypted 200/1000 vectors
+  Encrypted 300/1000 vectors
+  Encrypted 400/1000 vectors
+  Encrypted 500/1000 vectors
+  Encrypted 600/1000 vectors
+  Encrypted 700/1000 vectors
+  Encrypted 800/1000 vectors
+  Encrypted 900/1000 vectors
+  Encrypted 1000/1000 vectors
+✓ All vectors encrypted
+
+========================================
+Computing Cosine Similarities
+========================================
+  Computed 1/1000 similarities
+  Computed 100/1000 similarities
+  Computed 200/1000 similarities
+  Computed 300/1000 similarities
+  Computed 400/1000 similarities
+  Computed 500/1000 similarities
+  Computed 600/1000 similarities
+  Computed 700/1000 similarities
+  Computed 800/1000 similarities
+  Computed 900/1000 similarities
+  Computed 1000/1000 similarities
+✓ All similarities computed
+similarity 0 is -0.0748841
+similarity 1 is -0.0173946
+similarity 2 is 0.00219136
+similarity 3 is -0.0541705
+similarity 4 is -0.00059714
+similarity 5 is -0.0428588
+similarity 6 is -0.00820834
+similarity 7 is 0.0670974
+similarity 8 is -0.0209192
+similarity 9 is 0.00545281
+similarity 10 is -0.110253
+similarity 11 is -0.00631657
+similarity 12 is 0.0596448
+similarity 13 is -0.0398236
+similarity 14 is -0.00616287
+similarity 15 is 0.0168499
+similarity 16 is -0.0439153
+similarity 17 is -0.0138611
+similarity 18 is 0.056351
+similarity 19 is -0.0888718
+similarity 20 is -0.00141174
+similarity 21 is -0.00979208
+similarity 22 is 0.0315246
+similarity 23 is 0.0507501
+similarity 24 is 0.0184808
+similarity 25 is -0.0365745
+similarity 26 is 0.0163551
+similarity 27 is 0.0144345
+similarity 28 is 0.025533
+similarity 29 is -0.0152657
+similarity 30 is -0.0263509
+similarity 31 is -0.0223241
+similarity 32 is -0.0593577
+similarity 33 is 0.00595666
+similarity 34 is 0.0780216
+similarity 35 is 0.0640365
+similarity 36 is -0.00161392
+similarity 37 is -0.040487
+similarity 38 is -0.0130537
+similarity 39 is 0.0637231
+similarity 40 is 0.014327
+similarity 41 is 0.0153561
+similarity 42 is -0.0111113
+similarity 43 is 0.0151196
+similarity 44 is 0.0251858
+similarity 45 is 0.0448664
+similarity 46 is 0.0190099
+similarity 47 is 0.0519043
+similarity 48 is -0.0137643
+similarity 49 is -0.0108996
+similarity 50 is 0.0288095
+similarity 51 is -0.0322198
+similarity 52 is 0.0134039
+similarity 53 is 0.000866108
+similarity 54 is 0.00284947
+similarity 55 is -0.0132813
+similarity 56 is 0.0563606
+similarity 57 is 0.0405193
+similarity 58 is -0.0550615
+similarity 59 is 0.0561589
+similarity 60 is -0.0402197
+similarity 61 is 0.0436735
+similarity 62 is -0.0114839
+similarity 63 is -0.0294312
+similarity 64 is 0.000644736
+similarity 65 is -0.0740209
+similarity 66 is -0.0646535
+similarity 67 is -0.0309051
+similarity 68 is 0.0436021
+similarity 69 is -0.0529523
+similarity 70 is 0.0481727
+similarity 71 is 0.0704984
+similarity 72 is 0.0201451
+similarity 73 is 0.0221951
+similarity 74 is -0.0668617
+similarity 75 is -0.0643728
+similarity 76 is 0.0105872
+similarity 77 is -0.0105852
+similarity 78 is 0.0329905
+similarity 79 is -0.0338759
+similarity 80 is 0.0231419
+similarity 81 is -0.0168164
+similarity 82 is -0.0700041
+similarity 83 is -0.0169977
+similarity 84 is 0.0699556
+similarity 85 is -0.0899238
+similarity 86 is -0.0638269
+similarity 87 is 0.000907406
+similarity 88 is 0.0139755
+similarity 89 is -0.0233951
+similarity 90 is -0.0197065
+similarity 91 is -0.026882
+similarity 92 is 0.00145831
+similarity 93 is 0.0585334
+similarity 94 is 0.0278564
+similarity 95 is 0.0373238
+similarity 96 is 0.0174626
+similarity 97 is -0.0404406
+similarity 98 is -0.019567
+similarity 99 is 0.015668
+similarity 100 is 0.00174072
+similarity 101 is 0.0355129
+similarity 102 is -0.0695773
+similarity 103 is 0.0592562
+similarity 104 is -0.049653
+similarity 105 is 0.0732172
+similarity 106 is 0.0561184
+similarity 107 is 0.00425782
+similarity 108 is -0.0436989
+similarity 109 is 0.0497141
+similarity 110 is 0.0307792
+similarity 111 is -0.00606535
+similarity 112 is 0.00802528
+similarity 113 is -0.0641008
+similarity 114 is 0.0113098
+similarity 115 is -0.0564946
+similarity 116 is -0.0143383
+similarity 117 is -0.0576191
+similarity 118 is 0.0010162
+similarity 119 is 0.00771958
+similarity 120 is -0.0068421
+similarity 121 is -0.0282848
+similarity 122 is 0.0650292
+similarity 123 is -0.0528695
+similarity 124 is -0.040675
+similarity 125 is 0.0475274
+similarity 126 is 0.0168359
+similarity 127 is -0.00193146
+similarity 128 is -0.0143915
+similarity 129 is -0.0256598
+similarity 130 is -0.0248781
+similarity 131 is -0.0642133
+similarity 132 is 0.100918
+similarity 133 is -0.014708
+similarity 134 is -0.0347682
+similarity 135 is -0.0775753
+similarity 136 is 0.022198
+similarity 137 is -0.00685443
+similarity 138 is 0.0292218
+similarity 139 is 0.0262296
+similarity 140 is -0.0216198
+similarity 141 is 0.0766636
+similarity 142 is -0.0351175
+similarity 143 is 0.0972596
+similarity 144 is -0.0537086
+similarity 145 is -0.0401097
+similarity 146 is 0.0275265
+similarity 147 is 0.0378835
+similarity 148 is 0.0400672
+similarity 149 is 0.00419652
+similarity 150 is -0.00169137
+similarity 151 is -0.0568844
+similarity 152 is -0.0204844
+similarity 153 is -0.102167
+similarity 154 is 0.0683238
+similarity 155 is 0.0179241
+similarity 156 is -0.0255661
+similarity 157 is 0.0565709
+similarity 158 is -0.021331
+similarity 159 is 0.00873713
+similarity 160 is -0.0472632
+similarity 161 is -0.0313592
+similarity 162 is 0.0295396
+similarity 163 is -0.0632377
+similarity 164 is 0.0123625
+similarity 165 is 0.000393887
+similarity 166 is -0.0196312
+similarity 167 is 0.00369505
