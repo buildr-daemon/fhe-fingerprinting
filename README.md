@@ -1,407 +1,175 @@
-### Disclaimer: 
-This is my first time working on a full cpp project , so it's a little messy, there is open-fhe python library but was not sure about the full availability of the api so went ahead with cpp.
+# Homomorphic Maximum Similarity Search
 
+A C++ implementation of secure maximum cosine similarity search using OpenFHE and the CKKS homomorphic encryption scheme.
 
-### Software Design: 
+## Overview
 
-/harness: contains the primary logic for the code ,
-main.cpp -> orchestrates everything ,
-./data_synthesis.py -> generates data 1000x 512D unit-normalized vectors ,
-and a query vector -> 512 D it is encrypted and unit-nomralized during the run to simulate real world use case ,
-/users -> simulated users who will have different parts of the key and only the threshold max will be decrypted at the end ,
-openfhe -> built openfhe 1.42.0 for this project  , to dowload it with this project run 
-git clone --recursive-submodule <repo-link>
-### SETUP INSTRUCTIONS:
-run the ./build_main.sh after editing the CMakeLists.txt for your path to the openfhe library, 
+This project implements an **interactive protocol** for finding the maximum cosine similarity between an encrypted query vector and a set of encrypted storage vectors, without revealing the actual similarity scores or data to the server.
 
-### CKKS Params:
-CKKS params (
-    ring dimension: calculated by openfhe internally , 
-    modulus chain: 20 , 
-    scaling factor: 1024 ,
-),
+The solution uses a **double-blind comparison protocol** where:
+- The compute server performs homomorphic operations
+- An oracle (key holder) provides masked comparisons without seeing the actual values
+- Both vectors remain encrypted throughout the process
 
-### My system specifications:
-I am running it on :
-OS: Macos
-compiler: clang++
-CPU: arm based M2 pro
+---
 
-### How to reproduce
-I have used datasets from the /datasets folder running the simulation again on them should result in the same results
+## Key Components
 
-### One unified command
-./main compare 1 0.85
-1 -> dataset no
-0.85 -> threshold
+### `final_main.cpp`
 
-### Design Notes:
-https://www.notion.so/Mercle-Assignment-Design-notes-29644d413d1a801cba3bf7229fb322f5?source=copy_link
+Implements a **parallel tournament-based maximum finding algorithm**:
 
-### Results
+1. **Key Generation**: Generates CKKS keys with rotation capabilities for efficient operations
+2. **Vector Encryption**: Encrypts normalized query and storage vectors
+3. **Similarity Computation**: Computes cosine similarities homomorphically via dot products
+4. **Maximum Finding**: Uses a parallel tournament tree where:
+   - Candidates compete in pairs using masked comparisons
+   - Winner advances to the next round
+   - Maintains both encrypted value and index
+5. **Verification**: Compares results against plaintext computation
 
-Logs: 
+**CKKS Parameters**:
+- Multiplicative depth: 20
+- Scale mod size: 50
+- Batch size: 1024
+- Security level: 128-bit
+
+### `data_synthesis.py`
+
+Generates test datasets with unit-normalized vectors for cosine similarity.
+
+**Default Configuration**:
+- Storage vectors: `100 vectors × 512 dimensions`
+- Query vector: `1 vector × 512 dimensions`
+- Format: NumPy `.npy` files
+
+**Customization**: Edit `generate_dataset()` to modify:
+- `num_storage_vectors`: Number of storage vectors (default: 100)
+- `dimension`: Vector dimensions (default: 512)
+
+---
+
+## Setup Instructions
+
+### Prerequisites
+
+- C++ compiler with C++17 support
+- CMake (3.10+)
+- OpenFHE 1.42.0 (bundled in `dependencies/openfhe-development/`)
+
+### Build
+
+```bash
+# 1. Generate test data
+python data_synthesis.py
+
+# 2. Build the project
+./build_main.sh
+
+# Or manually:
+mkdir -p build
+cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j4
 ```
-❯ ./main full 1 0.85
 
+**Note**: Update `CMakeLists.txt` with your OpenFHE library path if needed.
+
+---
+
+## Running
+
+```bash
+./final-main
+```
+
+The program will:
+1. Generate CKKS keys
+2. Load and encrypt vectors from `datasets/dataset_1/`
+3. Compute cosine similarities homomorphically
+4. Find maximum using parallel tournament
+5. Decrypt and verify results
+
+### Test Results
+
+```
+❯ ./final-main
 ╔════════════════════════════════════════╗
-║     FULL PIPELINE EXECUTION            ║
+║    Interactive Max via Sequential      ║
+║       Double-Blind Comparison          ║
 ╚════════════════════════════════════════╝
 
-[Step 1/4] Generating multiparty keys...
-
 ========================================
-Initializing Multiparty CKKS
+Generating CKKS Keys
 ========================================
 ✓ CryptoContext initialized
-  Ring Dimension: 65536
-  Security Level: 128-bit classic
-  Multiplicative Depth: 15
+✓ Key pair generated
+✓ Rotation keys generated (for EvalSum)
 
 ========================================
-Generating Multiparty Keys
+Loading and Encrypting Vectors
 ========================================
-
-[User 1] Generating key pair...
-✓ User 1 key pair generated
-
-[User 2] Generating key pair...
-[Joint] Generating shared public key for (s_a + s_b)...
-✓ User 2 key pair generated
-✓ Shared public key generated (embedded in User 2's public key)
-
-[User 1] Generating evaluation multiplication key...
-✓ User 1 evaluation key generated
-
-[User 2] Generating evaluation multiplication key...
-✓ User 2 evaluation key generated
-
-[Joint] Generating shared evaluation multiplication key...
-✓ Shared evaluation multiplication key generated
-
-[User 1] Generating evaluation sum key...
-✓ User 1 evaluation sum key generated
-
-[User 2] Generating joint evaluation sum key...
-✓ Joint evaluation sum key for (s_a + s_b) generated
-
-[Joint] Combining evaluation sum keys...
-✓ Final joint evaluation sum key inserted
-
-✓ All multiparty keys generated successfully!
-
-========================================
-Saving Keys to Disk
-========================================
-
-[Shared] Saving crypto context...
-✓ Crypto context saved to both user directories
-
-[User 1] Saving keys...
-✓ User 1 keys saved to: users/user1/
-  - public_key.txt
-  - secret_key.txt
-
-[User 2] Saving keys...
-✓ User 2 keys saved to: users/user2/
-  - public_key.txt
-  - secret_key.txt
-
-[Shared] Saving joint public key...
-✓ Joint public key saved to both user directories
-  - joint_public_key.txt
-
-[Shared] Saving evaluation multiplication keys...
-✓ Evaluation multiplication keys saved to both user directories
-  - key-eval-mult.txt
-
-[Shared] Saving evaluation sum keys...
-✓ Evaluation sum keys saved to both user directories
-  - key-eval-sum.txt
-
-✓ All keys saved successfully!
-
-========================================
-Verifying Multiparty Keys
-========================================
-
-Test vector: [1, 2, 3]
-✓ Encrypted with joint public key
-
-Note: Multiparty threshold decryption requires cooperation
-      from both parties. This is a security feature!
-✓ Key verification PASSED (encryption works correctly)
-
-========================================
-Multiparty Key Generation Summary
-========================================
-
-✓ Successfully generated multiparty CKKS keys
-✓ Number of parties: 2
-✓ Scheme: CKKS (Complex Number Encoding)
-✓ Security Level: 128-bit
-
-Keys saved to:
-  User 1: users/user1/
-  User 2: users/user2/
-
-Each user has:
-  - cryptocontext.txt (shared crypto parameters)
-  - public_key.txt (individual public key)
-  - secret_key.txt (individual secret key)
-  - joint_public_key.txt (shared public key for encryption)
-
-Usage:
-  - Encryption: Use joint_public_key.txt
-  - Decryption: Requires both user's secret keys (threshold)
-========================================
-
-[Step 2/4] Encrypting vectors...
-╔════════════════════════════════════════╗
-║   Vector Encryption Module             ║
-║   Multiparty CKKS System               ║
-╚════════════════════════════════════════╝
-
-========================================
-Loading Crypto Context and Keys
-========================================
-✓ Crypto context loaded
-  Ring Dimension: 65536
-  Batch Size: 1024
-✓ Joint public key loaded
-
-========================================
-Encrypting Storage Vectors
-========================================
-
-[Dataset] Loaded storage vectors
-  Number of vectors: 1000
-  Dimension: 512
-  Total elements: 512000
-
-[Encryption] Processing vectors...
-  Encrypted 1/1000 vectors
-  Encrypted 100/1000 vectors
-  Encrypted 200/1000 vectors
-  Encrypted 300/1000 vectors
-  Encrypted 400/1000 vectors
-  Encrypted 500/1000 vectors
-  Encrypted 600/1000 vectors
-  Encrypted 700/1000 vectors
-  Encrypted 800/1000 vectors
-  Encrypted 900/1000 vectors
-  Encrypted 1000/1000 vectors
-✓ All storage vectors encrypted and saved
-
-========================================
-Encrypting Query Vector
-========================================
-
-[Dataset] Loaded query vector
-  Dimension: 512
-
-[Normalization] Computing unit normalization...
-  Original norm: 22.3937
-  Normalized norm: 1
-✓ Query vector normalized to unit length
-✓ Query vector encrypted and saved
-✓ Metadata saved to: encrypted_data/metadata.txt
-
-========================================
-Encryption Summary
-========================================
-
-✓ Encryption completed successfully
-✓ Encrypted data saved to: encrypted_data/
-
-Files created:
-  - storage_0.bin to storage_999.bin (1000 vectors)
-  - query.bin (query vector)
-  - metadata.txt (encryption metadata)
-========================================
-
-[Step 3/4] Computing encrypted max similarity...
-╔════════════════════════════════════════╗
-║  Homomorphic Similarity Computer       ║
-║  Multiparty CKKS System                ║
-╚════════════════════════════════════════╝
-
-[Configuration] Threshold: 0.85
-[Configuration] Max method: softmax
-
-========================================
-Loading Crypto Context
-========================================
-✓ Crypto context loaded
-
-[Loading] Evaluation multiplication keys...
-✓ Evaluation multiplication keys loaded
-
-[Loading] Evaluation sum keys...
-✓ Evaluation sum keys loaded
-
-[Loading] Query vector...
-✓ Query vector loaded
+✓ All vectors loaded and encrypted
 
 ========================================
 Computing Cosine Similarities
 ========================================
-
-[Processing] Computing 1000 dot products...
-  Computed 1/1000 similarities
-  Computed 100/1000 similarities
-  Computed 200/1000 similarities
-  Computed 300/1000 similarities
-  Computed 400/1000 similarities
-  Computed 500/1000 similarities
-  Computed 600/1000 similarities
-  Computed 700/1000 similarities
-  Computed 800/1000 similarities
-  Computed 900/1000 similarities
-  Computed 1000/1000 similarities
 ✓ All similarities computed
 
 ========================================
-Computing Encrypted Maximum
+Finding Max via Parallel Tournament
 ========================================
+  Tournament Round 1 | 100 candidates -> 50 winners
+  Tournament Round 2 | 50 candidates -> 25 winners
+  Tournament Round 3 | 25 candidates -> 13 winners
+  Tournament Round 4 | 13 candidates -> 7 winners
+  Tournament Round 5 | 7 candidates -> 4 winners
+  Tournament Round 6 | 4 candidates -> 2 winners
+  Tournament Round 7 | 2 candidates -> 1 winners
+✓ Tournament finished.
 
-[Validation] Input similarities count: 1000
-[Validation] Crypto context valid: Yes
+========================================
+Decrypting Results
+========================================
+✓ Decrypted maximum similarity: 0.0819815
+✓ Decrypted maximum index: 53
 
-[Algorithm] Softmax approximation
-  Sharpness α: 10
-  Formula: max ≈ Σ(x_i * exp(α*x_i)) / Σ(exp(α*x_i))
+========================================
+Verification (Plaintext)
+========================================
+✓ Plaintext maximum similarity: 0.0819815
+✓ Plaintext maximum index: 53
 
-[Step 1] Scaling similarities by α...
-[Step 2] Computing exponentials (polynomial approximation)...
-  Processed 1/1000 exponentials
-  Processed 100/1000 exponentials
-  Processed 200/1000 exponentials
-  Processed 300/1000 exponentials
-  Processed 400/1000 exponentials
-  Processed 500/1000 exponentials
-  Processed 600/1000 exponentials
-Error in computation
+========================================
+Result Comparison
+========================================
+Index match: ✓ YES
+Value match: ✓ YES (diff: 4.08619e-12)
+
+✓✓✓ ALL TESTS PASSED ✓✓✓
 ```
 
-with k order-statistics using openfhe-statistics
+---
+
+## Project Structure
 
 ```
-❯ bash build_test.sh
-=========================================
-Building ranking_test program...
-=========================================
-Using cmake: cmake
-Running CMake...
--- OpenMP found at /opt/homebrew/opt/libomp/include
--- Configuring done (0.4s)
--- Generating done (0.0s)
--- Build files have been written to: /Users/theholygrail/job-search/merkel-assignment/ranking_test/build
-Building project...
-[ 14%] Building CXX object CMakeFiles/ranking_test.dir/ranking_test.cpp.o
-clang++: warning: -lomp: 'linker' input unused [-Wunused-command-line-argument]
-[ 28%] Linking CXX executable /Users/theholygrail/job-search/merkel-assignment/ranking_test/ranking_test
-ld: warning: ignoring duplicate libraries: '-lomp'
-[100%] Built target ranking_test
-
-=========================================
-Build successful! Running program...
-=========================================
-
-╔═══════════════════════════════════════════════════════════╗
-║   512D Vector Cosine Similarity with Encrypted Ranking   ║
-║   Using rankWithCorrection with OpenFHE CKKS              ║
-╚═══════════════════════════════════════════════════════════╝
-
-========================================
-Step 1: Generate and Normalize Vectors
-========================================
-✓ Generated 100 storage vectors (512D each)
-✓ Generated 1 query vector (512D)
-
-========================================
-Step 2: Plaintext Cosine Similarity
-========================================
-
-Plaintext Maximum:
-  Vector index: 81
-  Similarity: 1.000000
-
-Top 5 Similarities:
-  1. Vector 81: 1.000000
-  2. Vector 29: 0.105504
-  3. Vector 48: 0.092617
-  4. Vector 71: 0.080768
-  5. Vector 13: 0.077764
-
-========================================
-Step 3: CKKS Encryption Setup
-========================================
-
-CryptoContext Parameters:
-  Similarity vector length: 100
-  Comparison depth: 5
-  Multiplicative depth: 20
-  Num slots: 16384
-
-Generating rotation indices...
-  Generated 235 rotation indices
-CKKS PARAMETERS
-Integral Bit Precision        : 1
-Decimal Bit Precision         : 50
-Ciphertext Modulus Precision  : 1052
-Ring Dimension                : 65536
-Max Slots                     : 32768
-Slots                         : 16384
-Multiplicative Depth          : 20
-Security Level                : HEStd_128_classic
-Secret Key Distribution       : UNIFORM_TERNARY
-Scaling Technique             : FLEXIBLEAUTO
-Encryption Technique          : STANDARD
-Multiplication Technique      : HPS
-Moduli Chain Bitsize          : [ 51 51 51 51 51 51 51 51 51 50 51 51 51 51 51 51 51 50 51 50 51 ]
-
-Key generation protocol...          COMPLETED (19.811666s)
-
-
-========================================
-Step 4: Encrypt Vectors
-========================================
-✓ Encrypted 100 storage vectors
-✓ Encrypted query vector
-
-========================================
-Step 5: Compute Encrypted Dot Products
-========================================
-Computing encrypted dot products for 100 vectors...
-  Processed 1/100 vectors
-  Processed 10/100 vectors
-  Processed 20/100 vectors
-  Processed 30/100 vectors
-  Processed 40/100 vectors
-  Processed 50/100 vectors
-  Processed 60/100 vectors
-  Processed 70/100 vectors
-  Processed 80/100 vectors
-  Processed 90/100 vectors
-  Processed 100/100 vectors
-✓ Computed encrypted similarities
-Packing similarities into single ciphertext...
-✓ Packed similarities into single ciphertext
-
-========================================
-Step 6: Encrypted Ranking and Maximum Extraction
-========================================
-
-[Algorithm] rankWithCorrection + indicator for maximum
-  ✓ Ranked similarities
-  ✓ Created maximum indicator mask
-✓ Encrypted maximum extraction completed
-  Runtime: 12.138646 seconds
-
-========================================
-Step 7: Decrypt and Compare
-========================================
-libc++abi: terminating due to uncaught exception of type lbcrypto::OpenFHEException: /Users/theholygrail/job-search/merkel-assignment/dependencies/openfhe-development/src/pke/lib/encoding/ckkspackedencoding.cpp:l.455:Decode(): The decryption failed because the approximation error is too high. Check the parameters. 
-build_test.sh: line 65: 12915 Abort trap: 6           ./ranking_test
+├── final_main.cpp          # Main program with tournament-based max search
+├── data_synthesis.py       # Dataset generation script
+├── datasets/               # Generated test datasets
+├── dependencies/           # OpenFHE library
+├── build/                  # Build artifacts
+└── CMakeLists.txt         # Build configuration
 ```
+
+---
+
+## Design Documentation
+
+[Design Notes](https://www.notion.so/Mercle-Assignment-Design-notes-29644d413d1a801cba3bf7229fb322f5)
+
+---
+
+## Disclaimer
+
+This was my first full C++ project, so the codebase may have rough edges. OpenFHE was chosen over the Python library due to API availability concerns.

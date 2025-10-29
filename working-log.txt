@@ -1,0 +1,54 @@
+❯ ./final-main
+╔════════════════════════════════════════╗
+║    Interactive Max via Sequential      ║
+║       Double-Blind Comparison          ║
+╚════════════════════════════════════════╝
+
+========================================
+Generating CKKS Keys
+========================================
+✓ CryptoContext initialized
+✓ Key pair generated
+✓ Rotation keys generated (for EvalSum)
+
+========================================
+Loading and Encrypting Vectors
+========================================
+✓ All vectors loaded and encrypted
+
+========================================
+Computing Cosine Similarities
+========================================
+✓ All similarities computed
+
+========================================
+Finding Max via Parallel Tournament
+========================================
+  Tournament Round 1 | 100 candidates -> 50 winners
+  Tournament Round 2 | 50 candidates -> 25 winners
+  Tournament Round 3 | 25 candidates -> 13 winners
+  Tournament Round 4 | 13 candidates -> 7 winners
+  Tournament Round 5 | 7 candidates -> 4 winners
+  Tournament Round 6 | 4 candidates -> 2 winners
+  Tournament Round 7 | 2 candidates -> 1 winners
+✓ Tournament finished.
+
+========================================
+Decrypting Results
+========================================
+✓ Decrypted maximum similarity: 0.0819815
+✓ Decrypted maximum index: 53
+
+========================================
+Verification (Plaintext)
+========================================
+✓ Plaintext maximum similarity: 0.0819815
+✓ Plaintext maximum index: 53
+
+========================================
+Result Comparison
+========================================
+Index match: ✓ YES
+Value match: ✓ YES (diff: 4.08619e-12)
+
+✓✓✓ ALL TESTS PASSED ✓✓✓
