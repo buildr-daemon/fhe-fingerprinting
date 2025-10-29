@@ -87,3 +87,10 @@ target_link_libraries(new-main ${OpenFHE_LIBRARIES})
 set_target_properties(new-main PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# Final main executable for MPC-based interactive max
+add_executable(final-main final_main.cpp)
+target_link_libraries(final-main ${OpenFHE_LIBRARIES})
+set_target_properties(final-main PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
