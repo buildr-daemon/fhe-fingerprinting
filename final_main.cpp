@@ -9,8 +9,8 @@
 #include <algorithm>
 #include <numeric>
 #include <cstring>
-#include <future> // Required for std::async and std::future
-#include <mutex> // Required for thread-safe random number generation
+#include <future>
+#include <mutex>
 #include "openfhe.h"
 
 using namespace lbcrypto;
@@ -83,46 +83,95 @@ public:
     }
 };
 
-
-// generateCKKSKeys (unchanged, EvalMerge keys are no longer needed)
-std::tuple<CryptoContext<DCRTPoly>, KeyPair<DCRTPoly>> generateCKKSKeys() {
+//================================================================================
+// MODIFIED: Key Generation for Threshold FHE
+//================================================================================
+std::tuple<CryptoContext<DCRTPoly>, PublicKey<DCRTPoly>, std::vector<PrivateKey<DCRTPoly>>>
+generateThresholdCKKSKeys() {
     std::cout << "\n========================================" << std::endl;
-    std::cout << "Generating CKKS Keys" << std::endl;
+    std::cout << "Generating Threshold CKKS Keys" << std::endl;
     std::cout << "========================================" << std::endl;
-    
-    uint32_t multDepth = 20; 
-    uint32_t scaleModSize = 50;
-    uint32_t batchSize = 1024;
-    SecurityLevel securityLevel = HEStd_128_classic;
-    
+
+    uint32_t multDepth      = 20;
+    uint32_t scaleModSize   = 50;
+    uint32_t batchSize      = 1024;
+    SecurityLevel secLevel = HEStd_128_classic;
+
     CCParams<CryptoContextCKKSRNS> parameters;
     parameters.SetMultiplicativeDepth(multDepth);
     parameters.SetScalingModSize(scaleModSize);
     parameters.SetBatchSize(batchSize);
-    parameters.SetSecurityLevel(securityLevel);
+    parameters.SetSecurityLevel(secLevel);
+
+    CryptoContext<DCRTPoly> cc = GenCryptoContext(parameters);
+
+    cc->Enable(PKE);
+    cc->Enable(KEYSWITCH);
+    cc->Enable(LEVELEDSHE);
+    cc->Enable(ADVANCEDSHE);
+    cc->Enable(MULTIPARTY); // Enable the multi-party features
+    std::cout << "✓ CryptoContext initialized for Threshold FHE" << std::endl;
+
+    // --- Simulate Multi-Party Key Generation ---
+    const int numParties = 3;
+    std::vector<KeyPair<DCRTPoly>> keyPairs;
     
-    CryptoContext<DCRTPoly> cryptoContext = GenCryptoContext(parameters);
+    // First party generates initial key pair
+    keyPairs.push_back(cc->KeyGen());
     
-    cryptoContext->Enable(PKE);
-    cryptoContext->Enable(KEYSWITCH);
-    cryptoContext->Enable(LEVELEDSHE);
-    cryptoContext->Enable(ADVANCEDSHE);
-    std::cout << "✓ CryptoContext initialized" << std::endl;
+    // Subsequent parties use MultipartyKeyGen in sequence
+    for (int i = 1; i < numParties; ++i) {
+        keyPairs.push_back(cc->MultipartyKeyGen(keyPairs[i-1].publicKey));
+    }
     
-    KeyPair<DCRTPoly> keyPair = cryptoContext->KeyGen();
-    std::cout << "✓ Key pair generated" << std::endl;
+    // The final public key (from the last party) is the collective public key
+    auto collectivePublicKey = keyPairs.back().publicKey;
+
+    // Collect all secret keys (these would be held by different parties in reality)
+    std::vector<PrivateKey<DCRTPoly>> secretKeyShares;
+    for(const auto& kp : keyPairs) {
+        secretKeyShares.push_back(kp.secretKey);
+    }
+    std::cout << "✓ " << numParties << " secret key shares and 1 collective public key generated" << std::endl;
     
-    cryptoContext->EvalMultKeyGen(keyPair.secretKey);
-    cryptoContext->EvalSumKeyGen(keyPair.secretKey);
+    // --- Generate Evaluation Keys in a Distributed Manner ---
+    // EvalMult - following the pattern from threshold-fhe-5p.cpp
+    auto evalMultKey1 = cc->KeySwitchGen(keyPairs[0].secretKey, keyPairs[0].secretKey);
+    auto evalMultKey2 = cc->MultiKeySwitchGen(keyPairs[1].secretKey, keyPairs[1].secretKey, evalMultKey1);
+    auto evalMultKey3 = cc->MultiKeySwitchGen(keyPairs[2].secretKey, keyPairs[2].secretKey, evalMultKey1);
     
+    auto evalMultAB = cc->MultiAddEvalKeys(evalMultKey1, evalMultKey2, keyPairs[1].publicKey->GetKeyTag());
+    auto evalMultABC = cc->MultiAddEvalKeys(evalMultAB, evalMultKey3, keyPairs[2].publicKey->GetKeyTag());
+    
+    auto evalMultCABC = cc->MultiMultEvalKey(keyPairs[2].secretKey, evalMultABC, keyPairs[2].publicKey->GetKeyTag());
+    auto evalMultBABC = cc->MultiMultEvalKey(keyPairs[1].secretKey, evalMultABC, keyPairs[2].publicKey->GetKeyTag());
+    auto evalMultAABC = cc->MultiMultEvalKey(keyPairs[0].secretKey, evalMultABC, keyPairs[2].publicKey->GetKeyTag());
+    
+    auto evalMultBCABC = cc->MultiAddEvalMultKeys(evalMultBABC, evalMultCABC, evalMultBABC->GetKeyTag());
+    auto evalMultFinal = cc->MultiAddEvalMultKeys(evalMultAABC, evalMultBCABC, keyPairs[2].publicKey->GetKeyTag());
+    cc->InsertEvalMultKey({evalMultFinal});
+    
+    // EvalSum - following the pattern from threshold-fhe-5p.cpp
+    cc->EvalSumKeyGen(keyPairs[0].secretKey);
+    auto evalSumKeys = std::make_shared<std::map<usint, EvalKey<DCRTPoly>>>(
+        cc->GetEvalSumKeyMap(keyPairs[0].secretKey->GetKeyTag()));
+    
+    auto evalSumKeysB = cc->MultiEvalSumKeyGen(keyPairs[1].secretKey, evalSumKeys, keyPairs[1].publicKey->GetKeyTag());
+    auto evalSumKeysC = cc->MultiEvalSumKeyGen(keyPairs[2].secretKey, evalSumKeys, keyPairs[2].publicKey->GetKeyTag());
+    
+    auto evalSumKeysAB = cc->MultiAddEvalSumKeys(evalSumKeys, evalSumKeysB, keyPairs[1].publicKey->GetKeyTag());
+    auto evalSumKeysJoin = cc->MultiAddEvalSumKeys(evalSumKeysC, evalSumKeysAB, keyPairs[2].publicKey->GetKeyTag());
+    cc->InsertEvalSumKey(evalSumKeysJoin);
+    
+    // Rotation Keys - use regular EvalRotateKeyGen with first secret key share
     std::vector<int32_t> rotation_indices;
     for (int i = 1; i < batchSize; i *= 2) {
         rotation_indices.push_back(i);
     }
-    cryptoContext->EvalRotateKeyGen(keyPair.secretKey, rotation_indices);
-    std::cout << "✓ Rotation keys generated (for EvalSum)" << std::endl;
+    cc->EvalRotateKeyGen(secretKeyShares[0], rotation_indices);
+    std::cout << "✓ All distributed evaluation keys generated" << std::endl;
     
-    return std::make_tuple(cryptoContext, keyPair);
+    return std::make_tuple(cc, collectivePublicKey, secretKeyShares);
 }
 
 
@@ -168,7 +217,7 @@ loadAndEncryptVectors(CryptoContext<DCRTPoly> cryptoContext, PublicKey<DCRTPoly>
         Ciphertext<DCRTPoly> ct = cryptoContext->Encrypt(publicKey, pt);
         encryptedStorage.push_back(ct);
     }
-    std::cout << "✓ All vectors loaded and encrypted" << std::endl;
+    std::cout << "✓ All vectors loaded and encrypted (with collective public key)" << std::endl;
     return std::make_tuple(queryCt, encryptedStorage, normalizedQuery, storageVecs);
 }
 
@@ -191,29 +240,32 @@ std::vector<Ciphertext<DCRTPoly>> computeCosineSimilarities(
     return similarities;
 }
 
-
 //================================================================================
-// KeyHolder (Oracle) Class - MODIFIED
+// MODIFIED: KeyHolder now manages multiple secret key shares for threshold decryption
 //================================================================================
 class KeyHolder {
 public:
-    KeyHolder(CryptoContext<DCRTPoly> cc, PrivateKey<DCRTPoly> sk, PublicKey<DCRTPoly> pk)
-        : m_cc(cc), m_sk(sk), m_pk(pk) {}
+    KeyHolder(CryptoContext<DCRTPoly> cc, const std::vector<PrivateKey<DCRTPoly>>& skShares, PublicKey<DCRTPoly> pk)
+        : m_cc(cc), m_skShares(skShares), m_pk(pk) {}
 
-    /**
-     * @brief Securely determines if a challenger value is greater than a champion.
-     * Receives Enc(challenger - champion + r) and returns Enc(1) if it's a new max,
-     * otherwise returns Enc(0).
-     * @param ct_masked_diff Ciphertext containing the masked difference.
-     * @param r The plaintext random mask 'r' used by the server.
-     * @return An encrypted bit: Enc(1) for new max, Enc(0) otherwise.
-     */
     Ciphertext<DCRTPoly> IsNewMax(Ciphertext<DCRTPoly> ct_masked_diff, double r) {
+        // --- Secure Multi-Party Decryption ---
+        std::vector<Ciphertext<DCRTPoly>> partialDecrypts;
+        
+        // 1. Generate partial decryptions from each key holder
+        // The first party is the "lead" party in this protocol
+        partialDecrypts.push_back(m_cc->MultipartyDecryptLead({ct_masked_diff}, m_skShares[0])[0]);
+        for (size_t i = 1; i < m_skShares.size(); ++i) {
+            partialDecrypts.push_back(m_cc->MultipartyDecryptMain({ct_masked_diff}, m_skShares[i])[0]);
+        }
+
+        // 2. Fuse the partial decryptions to get the final plaintext
         Plaintext pt_masked_diff;
-        m_cc->Decrypt(m_sk, ct_masked_diff, &pt_masked_diff);
+        m_cc->MultipartyDecryptFusion(partialDecrypts, &pt_masked_diff);
+        
         double v = pt_masked_diff->GetRealPackedValue()[0];
 
-        // Comparison: (challenger - champion + r) > r  <=>  challenger > champion
+        // Comparison and re-encryption logic remains the same
         double bit = (v > r) ? 1.0 : 0.0;
         
         std::vector<double> bit_vec = {bit};
@@ -223,139 +275,20 @@ public:
 
 private:
     CryptoContext<DCRTPoly> m_cc;
-    PrivateKey<DCRTPoly> m_sk;
-    PublicKey<DCRTPoly> m_pk;
+    std::vector<PrivateKey<DCRTPoly>> m_skShares; // Holds all secret keys
+    PublicKey<DCRTPoly> m_pk; // The collective public key
 };
 
-//================================================================================
-// ComputeServer Class - CORRECTED
-//================================================================================
-// class ComputeServer {
-//     public:
-//         ComputeServer(CryptoContext<DCRTPoly> cc, PublicKey<DCRTPoly> pk) : m_cc(cc), m_pk(pk) {}
-    
-        // std::pair<Ciphertext<DCRTPoly>, Ciphertext<DCRTPoly>> findMaxSequential(
-        //     const std::vector<Ciphertext<DCRTPoly>>& similarities, KeyHolder& oracle) {
-            
-        //     if (similarities.size() < 1) {
-        //         throw std::runtime_error("Similarities vector cannot be empty.");
-        //     }
-        //     size_t k = similarities.size();
-        //     std::cout << "\n========================================" << std::endl;
-        //     std::cout << "Finding Max via Sequential Comparison" << std::endl;
-        //     std::cout << "========================================" << std::endl;
-    
-        //     // --- 1. Initialization ---
-        //     auto encrypted_max = similarities[0];
-        //     // **FIX 1**: Explicitly create the vector
-        //     Plaintext pt_idx_0 = m_cc->MakeCKKSPackedPlaintext(std::vector<double>{0.0});
-        //     auto encrypted_idx = m_cc->Encrypt(m_pk, pt_idx_0);
-    
-        //     std::random_device rd;
-        //     std::mt19937 gen(rd());
-        //     std::uniform_real_distribution<> distrib(-10000.0, 10000.0);
-            
-        //     // --- 2. Iteration ---
-        //     for (size_t i = 1; i < k; ++i) {
-        //         auto& challenger_val = similarities[i];
-                
-        //         auto ct_diff = m_cc->EvalSub(challenger_val, encrypted_max);
-                
-        //         double r = distrib(gen);
-        //         auto ct_masked_diff = m_cc->EvalAdd(ct_diff, r);
-        //         auto encrypted_bit = oracle.IsNewMax(ct_masked_diff, r);
-    
-        //         // Homomorphically update the max and index
-        //         auto diff_for_update = m_cc->EvalSub(challenger_val, encrypted_max);
-        //         auto term_to_add_val = m_cc->EvalMult(encrypted_bit, diff_for_update);
-        //         encrypted_max = m_cc->EvalAdd(encrypted_max, term_to_add_val);
-                
-        //         // **FIX 2**: Explicitly create the vector for the index 'i'
-        //         Plaintext pt_i = m_cc->MakeCKKSPackedPlaintext(std::vector<double>{(double)i});
-        //         auto diff_idx = m_cc->EvalSub(pt_i, encrypted_idx);
-        //         auto term_to_add_idx = m_cc->EvalMult(encrypted_bit, diff_idx);
-        //         encrypted_idx = m_cc->EvalAdd(encrypted_idx, term_to_add_idx);
-    
-        //         std::cout << "  Round " << i << "/" << k-1 << " completed." << std::endl;
-        //     }
-    
-        //     std::cout << "✓ Sequential comparison finished." << std::endl;
-        //     return {encrypted_max, encrypted_idx};
-        // }
-    
-    //     std::pair<Ciphertext<DCRTPoly>, Ciphertext<DCRTPoly>> findMaxSequential(
-    //         const std::vector<Ciphertext<DCRTPoly>>& similarities, KeyHolder& oracle) {
-            
-    //         if (similarities.size() < 1) {
-    //             throw std::runtime_error("Similarities vector cannot be empty.");
-    //         }
-    //         size_t k = similarities.size();
-    //         std::cout << "\n========================================" << std::endl;
-    //         std::cout << "Finding Max via Sequential Comparison" << std::endl;
-    //         std::cout << "========================================" << std::endl;
-    
-    //         auto encrypted_max = similarities[0];
-    //         Plaintext pt_idx_0 = m_cc->MakeCKKSPackedPlaintext(std::vector<double>{0.0});
-    //         auto encrypted_idx = m_cc->Encrypt(m_pk, pt_idx_0);
-    
-    //         std::random_device rd;
-    //         std::mt19937 gen(rd());
-    //         std::uniform_real_distribution<> distrib(-10000.0, 10000.0);
-            
-    //         for (size_t i = 1; i < k; ++i) {
-    //             auto& challenger_val = similarities[i];
-                
-    //             auto ct_diff = m_cc->EvalSub(challenger_val, encrypted_max);
-                
-    //             double r = distrib(gen);
-    //             auto ct_masked_diff = m_cc->EvalAdd(ct_diff, r);
-    //             auto encrypted_bit = oracle.IsNewMax(ct_masked_diff, r);
-    
-    //             // Update max value (this part was correct)
-    //             auto diff_for_update = m_cc->EvalSub(challenger_val, encrypted_max);
-    //             auto term_to_add_val = m_cc->EvalMult(encrypted_bit, diff_for_update);
-    //             encrypted_max = m_cc->EvalAdd(encrypted_max, term_to_add_val);
-                
-    //             // **FIX 2: STABLE INDEX UPDATE LOGIC**
-    //             // The old way `EvalSub(Plaintext, Ciphertext)` is unstable in a deep loop
-    //             // as the ciphertext's parameters change.
-    //             // The robust way is to make both operands proper ciphertexts.
-    //             Plaintext pt_i = m_cc->MakeCKKSPackedPlaintext(std::vector<double>{(double)i});
-    //             auto ct_i = m_cc->Encrypt(m_pk, pt_i); // Create a fresh ciphertext for `i`.
-    
-    //             // Now, both `ct_i` and `encrypted_idx` are well-formed ciphertexts.
-    //             // The library will correctly align their levels before subtracting.
-    //             auto diff_idx = m_cc->EvalSub(ct_i, encrypted_idx);
-    //             auto term_to_add_idx = m_cc->EvalMult(encrypted_bit, diff_idx);
-    //             encrypted_idx = m_cc->EvalAdd(encrypted_idx, term_to_add_idx);
-    
-    //             std::cout << "  Round " << i << "/" << k-1 << " completed." << std::endl;
-    //         }
-    
-    //         std::cout << "✓ Sequential comparison finished." << std::endl;
-    //         return {encrypted_max, encrypted_idx};
-    //     }
-    // private:
-    //     CryptoContext<DCRTPoly> m_cc;
-    //     PublicKey<DCRTPoly> m_pk;
-    // };
 
-
-//================================================================================
-// NEW: Struct to bundle score and index
-//================================================================================
+// Struct EncryptedCandidate and ComputeServer Class (unchanged)
 struct EncryptedCandidate {
     Ciphertext<DCRTPoly> value;
     Ciphertext<DCRTPoly> index;
 };
 
-//================================================================================
-// REWRITTEN: ComputeServer Class for Parallel Tournament
-//================================================================================
 class ComputeServer {
 public:
     ComputeServer(CryptoContext<DCRTPoly> cc, PublicKey<DCRTPoly> pk) : m_cc(cc), m_pk(pk) {
-        // Pre-encrypt Plaintext(1.0) for the selection logic
         Plaintext pt_one = m_cc->MakeCKKSPackedPlaintext(std::vector<double>{1.0});
         m_ct_one = m_cc->Encrypt(m_pk, pt_one);
     }
@@ -367,7 +300,6 @@ public:
         std::cout << "Finding Max via Parallel Tournament" << std::endl;
         std::cout << "========================================" << std::endl;
 
-        // 1. Prepare initial candidates with their original indices
         std::vector<EncryptedCandidate> candidates;
         for (size_t i = 0; i < similarities.size(); ++i) {
             Plaintext pt_idx = m_cc->MakeCKKSPackedPlaintext(std::vector<double>{(double)i});
@@ -388,7 +320,6 @@ public:
                 candidates.pop_back();
             }
 
-            // 2. Launch parallel comparisons for pairs
             for (size_t i = 0; i < candidates.size(); i += 2) {
                 futures.push_back(
                     std::async(std::launch::async, &ComputeServer::secureCompareAndSelect, this, 
@@ -396,13 +327,12 @@ public:
                 );
             }
 
-            // 3. Collect winners for the next round
             std::vector<EncryptedCandidate> next_round_candidates;
             for (auto& f : futures) {
                 next_round_candidates.push_back(f.get());
             }
             if (has_odd_one) {
-                next_round_candidates.push_back(odd_one_out); // The odd one gets a "bye"
+                next_round_candidates.push_back(odd_one_out);
             }
             candidates = std::move(next_round_candidates);
             std::cout << candidates.size() << " winners" << std::endl;
@@ -416,12 +346,11 @@ private:
     CryptoContext<DCRTPoly> m_cc;
     PublicKey<DCRTPoly> m_pk;
     Ciphertext<DCRTPoly> m_ct_one;
-    std::mutex m_rng_mutex; // Mutex for thread-safe random number generation
+    std::mutex m_rng_mutex;
 
     EncryptedCandidate secureCompareAndSelect(
         EncryptedCandidate candA, EncryptedCandidate candB, KeyHolder& oracle) {
         
-        // Use a lock to ensure each thread gets a unique random number
         double r;
         {
             std::lock_guard<std::mutex> lock(m_rng_mutex);
@@ -431,12 +360,10 @@ private:
             r = distrib(gen);
         }
 
-        // Comparison: Get Enc(bit), where bit = 1 if A > B, else 0
         auto ct_diff = m_cc->EvalSub(candA.value, candB.value);
         auto ct_masked_diff = m_cc->EvalAdd(ct_diff, r);
         auto encrypted_bit = oracle.IsNewMax(ct_masked_diff, r);
 
-        // Homomorphic Selection: winner = bit * A + (1-bit) * B
         auto one_minus_bit = m_cc->EvalSub(m_ct_one, encrypted_bit);
 
         auto termA_val = m_cc->EvalMult(encrypted_bit, candA.value);
@@ -451,33 +378,52 @@ private:
     }
 };
 
-
-// Main function (updated to call the new server method)
+//================================================================================
+// MODIFIED: Main function to use the Threshold FHE scheme
+//================================================================================
 int main(int argc, char* argv[]) {
     std::cout << "╔════════════════════════════════════════╗" << std::endl;
-    std::cout << "║    Interactive Max via Sequential      ║" << std::endl;
-    std::cout << "║       Double-Blind Comparison          ║" << std::endl;
+    std::cout << "║ Interactive Max via Threshold FHE &    ║" << std::endl;
+    std::cout << "║    Double-Blind Comparison             ║" << std::endl;
     std::cout << "╚════════════════════════════════════════╝" << std::endl;
     
     try {
-        auto [cryptoContext, keyPair] = generateCKKSKeys();
+        // Use the new threshold key generation function
+        auto [cryptoContext, collectivePubKey, secretKeyShares] = generateThresholdCKKSKeys();
+        
         auto [queryCt, encryptedStorage, queryVec, storageVecs] = 
-            loadAndEncryptVectors(cryptoContext, keyPair.publicKey);
+            loadAndEncryptVectors(cryptoContext, collectivePubKey);
+        
         auto similarities = computeCosineSimilarities(cryptoContext, queryCt, encryptedStorage);
         
-        KeyHolder oracle(cryptoContext, keyPair.secretKey, keyPair.publicKey);
-        ComputeServer server(cryptoContext, keyPair.publicKey);
+        // The oracle now holds all secret key shares
+        KeyHolder oracle(cryptoContext, secretKeyShares, collectivePubKey);
+        ComputeServer server(cryptoContext, collectivePubKey);
         
-        // **MODIFICATION**: Call the new sequential method
         auto [encrypted_max, encrypted_idx] = server.findMaxTournament(similarities, oracle);
         
         std::cout << "\n========================================" << std::endl;
-        std::cout << "Decrypting Results" << std::endl;
+        std::cout << "Decrypting Results (Threshold Protocol)" << std::endl;
         std::cout << "========================================" << std::endl;
         
+        // --- Final Decryption using the Multi-Party Protocol ---
         Plaintext maxPt, idxPt;
-        cryptoContext->Decrypt(keyPair.secretKey, encrypted_max, &maxPt);
-        cryptoContext->Decrypt(keyPair.secretKey, encrypted_idx, &idxPt);
+        
+        // Decrypt Max Value
+        std::vector<Ciphertext<DCRTPoly>> partialMax;
+        partialMax.push_back(cryptoContext->MultipartyDecryptLead({encrypted_max}, secretKeyShares[0])[0]);
+        for (size_t i = 1; i < secretKeyShares.size(); ++i) {
+            partialMax.push_back(cryptoContext->MultipartyDecryptMain({encrypted_max}, secretKeyShares[i])[0]);
+        }
+        cryptoContext->MultipartyDecryptFusion(partialMax, &maxPt);
+
+        // Decrypt Max Index
+        std::vector<Ciphertext<DCRTPoly>> partialIdx;
+        partialIdx.push_back(cryptoContext->MultipartyDecryptLead({encrypted_idx}, secretKeyShares[0])[0]);
+        for (size_t i = 1; i < secretKeyShares.size(); ++i) {
+            partialIdx.push_back(cryptoContext->MultipartyDecryptMain({encrypted_idx}, secretKeyShares[i])[0]);
+        }
+        cryptoContext->MultipartyDecryptFusion(partialIdx, &idxPt);
         
         double maxVal = maxPt->GetRealPackedValue()[0];
         size_t idxVal = static_cast<size_t>(round(idxPt->GetRealPackedValue()[0]));

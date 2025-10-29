@@ -19,7 +19,7 @@ def normalize_vectors(vectors):
     return vectors / norms
 
 
-def generate_dataset(dataset_path, num_storage_vectors=100, dimension=512):
+def generate_dataset(dataset_path, num_storage_vectors=10, dimension=512):
     """
     Generate a single dataset with storage vectors and query vector.
     
